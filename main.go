@@ -1,38 +1,31 @@
 package main
 
 import (
-	"goweb-sample/controller"
-	"goweb-sample/repository"
-	"os"
+	"fmt"
+	"gin-mvc/common/logger"
+	"gin-mvc/router"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap/zapcore"
 )
 
-func main() {
-	if err := Init("./data/"); err != nil {
-		os.Exit(-1)
-	}
-	r := gin.Default()
-	r.GET("/community/page/get/:id", func(c *gin.Context) {
-		topicId := c.Param("id")
-		data := controller.QueryPageInfo(topicId)
-		c.JSON(200, data)
-	})
-	r.POST("/community/page/", func(c *gin.Context) {
-		title := c.PostForm("title")
-		content := c.PostForm("content")
-		data := controller.PublishNewTopic(title, content)
-		c.JSON(200, data)
-	})
-	err := r.Run()
-	if err != nil {
-		return
-	}
+// 全局初始化
+func init() {
+	fmt.Println("hi")
 }
 
-func Init(filePath string) error {
-	if err := repository.Init(filePath); err != nil {
-		return err
-	}
-	return nil
+func main() {
+	fmt.Println("hi")
+	fmt.Println("hi")
+	fmt.Println("hi")
+	fmt.Println("hi")
+	fmt.Println("hi")
+	fmt.Println("hi")
+	logger.InitLog(zapcore.DebugLevel, logger.LOGFORMAT_CONSOLE, "all.log")
+	r := gin.Default()
+
+	// 配置路由中间件以及路由信息
+	router.InitRouter(r)
+
+	r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 }
