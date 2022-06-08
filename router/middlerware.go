@@ -2,6 +2,7 @@ package router
 
 import (
 	"gin-mvc/common/db"
+	"gin-mvc/common/xerr"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -12,10 +13,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
-func UserAuthMiddleWare(method string) func(c *gin.Context) {
+func errorHandler(c *gin.Context, err error) {
+	var ok bool
+	var codeErr *xerr.CodeError
+
+	if codeErr, ok = err.(*xerr.CodeError); !ok {
+		codeErr = xerr.ErrUnKnown
+	}
+
+	httpCode := codeErr.HTTPCode()
+	code := codeErr.ErrCode()
+	msg := codeErr.ErrMsg()
+	c.JSON(httpCode, gin.H{
+		"code": code,
+		"msg":  msg,
+	})
+}
+
+func UserAuth(method string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var token string
 		if method == "Header" {
@@ -23,11 +40,10 @@ func UserAuthMiddleWare(method string) func(c *gin.Context) {
 		} else if method == "Query" {
 			token = c.Query("token")
 		}
+
+		// 未携带有效的token
 		if token == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 1002,
-				"msg":  "token为空",
-			})
+			errorHandler(c, xerr.ErrTokenValidation)
 			c.Abort()
 			return
 		}
@@ -35,29 +51,22 @@ func UserAuthMiddleWare(method string) func(c *gin.Context) {
 		// 去redis中查询token是否过期
 		isVaild, err := db.NewRedisDaoInstance().IsTokenValid(token)
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 1003,
-				"msg":  "redis查询失败",
-			})
+			errorHandler(c, err)
 			c.Abort()
 			return
 		}
 
+		// redis已过期
 		if !isVaild {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 1004,
-				"msg":  "token已过期",
-			})
+			errorHandler(c, xerr.ErrTokenNotFound)
 			c.Abort()
 			return
 		}
 
+		// 根据token获取userid
 		id, err := db.NewRedisDaoInstance().GetToken(token)
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"code": 1003,
-				"msg":  "redis查询失败",
-			})
+			errorHandler(c, err)
 			c.Abort()
 			return
 		}
@@ -66,76 +75,29 @@ func UserAuthMiddleWare(method string) func(c *gin.Context) {
 	}
 }
 
-// Config is config setting for Ginzap
-type Config struct {
-	TimeFormat string
-	UTC        bool
-	SkipPaths  []string
-}
-
-// Ginzap returns a gin.HandlerFunc (middleware) that logs requests using uber-go/zap.
-//
-// Requests with errors are logged using zap.Error().
-// Requests without errors are logged using zap.Info().
-//
-// It receives:
-//   1. A time package format string (e.g. time.RFC3339).
-//   2. A boolean stating whether to use UTC time zone or local.
-func LoggerMiddlerWare(logger *zap.Logger, timeFormat string, utc bool) gin.HandlerFunc {
-	return GinzapWithConfig(logger, &Config{TimeFormat: timeFormat, UTC: utc})
-}
-
-// GinzapWithConfig returns a gin.HandlerFunc using configs
-func GinzapWithConfig(logger *zap.Logger, conf *Config) gin.HandlerFunc {
-	skipPaths := make(map[string]bool, len(conf.SkipPaths))
-	for _, path := range conf.SkipPaths {
-		skipPaths[path] = true
-	}
-
+func ZapLogger(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		// some evil middlewares modify this values
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
 		c.Next()
 
-		if _, ok := skipPaths[path]; !ok {
-			end := time.Now()
-			latency := end.Sub(start)
-			if conf.UTC {
-				end = end.UTC()
-			}
-
-			if len(c.Errors) > 0 {
-				// Append error field if this is an erroneous request.
-				for _, e := range c.Errors.Errors() {
-					logger.Error(e)
-				}
-			} else {
-				fields := []zapcore.Field{
-					zap.Int("status", c.Writer.Status()),
-					zap.String("method", c.Request.Method),
-					zap.String("path", path),
-					zap.String("query", query),
-					zap.String("ip", c.ClientIP()),
-					zap.String("user-agent", c.Request.UserAgent()),
-					zap.Duration("latency", latency),
-				}
-				if conf.TimeFormat != "" {
-					fields = append(fields, zap.String("time", end.Format(conf.TimeFormat)))
-				}
-				logger.Info(path, fields...)
-			}
-		}
+		cost := time.Since(start)
+		logger.Info(path,
+			zap.Int("status", c.Writer.Status()),
+			zap.String("method", c.Request.Method),
+			zap.String("path", path),
+			zap.String("query", query),
+			zap.String("ip", c.ClientIP()),
+			zap.String("user-agent", c.Request.UserAgent()),
+			zap.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()),
+			zap.Duration("cost", cost),
+		)
 	}
 }
 
-// RecoveryWithZap returns a gin.HandlerFunc (middleware)
-// that recovers from any panics and logs requests using uber-go/zap.
-// All errors are logged using zap.Error().
-// stack means whether output the stack info.
-// The stack info is easy to find where the error occurs but the stack info is too large.
-func RecoveryMiddleWare(logger *zap.Logger, stack bool) gin.HandlerFunc {
+// GinRecovery recover掉项目可能出现的panic
+func ZapRecovery(logger *zap.Logger, stack bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -161,17 +123,14 @@ func RecoveryMiddleWare(logger *zap.Logger, stack bool) gin.HandlerFunc {
 					c.Abort()
 					return
 				}
-
 				if stack {
 					logger.Error("[Recovery from panic]",
-						zap.Time("time", time.Now()),
 						zap.Any("error", err),
 						zap.String("request", string(httpRequest)),
 						zap.String("stack", string(debug.Stack())),
 					)
 				} else {
 					logger.Error("[Recovery from panic]",
-						zap.Time("time", time.Now()),
 						zap.Any("error", err),
 						zap.String("request", string(httpRequest)),
 					)

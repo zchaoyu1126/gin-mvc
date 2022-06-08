@@ -2,12 +2,12 @@ package controller
 
 import (
 	"gin-mvc/app/service"
-	"gin-mvc/common/logger"
 	"gin-mvc/common/xerr"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type UserVO struct {
@@ -71,7 +71,7 @@ func UserInfo(c *gin.Context) {
 	toUserIDTmp := c.Query("user_id")
 	toUserID, err := strconv.ParseInt(toUserIDTmp, 10, 64)
 	if err != nil {
-		logger.Errorf("parse user_id:%v failed:%w", toUserIDTmp, err)
+		zap.S().Error("parse user_id:%v failed", toUserIDTmp)
 		errorHandler(c, xerr.ErrBadRequest)
 	}
 
@@ -79,7 +79,7 @@ func UserInfo(c *gin.Context) {
 	fromUserIDTmp, exists := c.Get("fromUserID")
 	fromUserID, ok := fromUserIDTmp.(int64)
 	if !exists || !ok {
-		logger.Errorf("parse fromUserID:%v failed:%w", fromUserIDTmp, err)
+		zap.S().Errorf("parse fromUserID:%v failed", fromUserIDTmp)
 		errorHandler(c, xerr.ErrBadRequest)
 		return
 	}

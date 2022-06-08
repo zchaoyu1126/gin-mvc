@@ -12,20 +12,18 @@ import (
 var (
 	OK = &CodeError{errCode: 0, errMsg: "OK", httpCode: http.StatusOK}
 
-	// 系统错误
-	// 未知的错误，不知如何分类的错误
-	ErrUnKnown = &CodeError{errCode: 10000, errMsg: "未知错误", httpCode: http.StatusInternalServerError}
-	// 例如regex初始化错误，有关第三包方的错误
+	// ErrUnKnown        未知错误
+	// ErrInternalServer 类型转换，使用标准库函数，使用第三方包等时出现的错误
+	// ErrDatabase       使用mysql数据库或者redis数据库出错
+	ErrUnKnown        = &CodeError{errCode: 10000, errMsg: "未知错误", httpCode: http.StatusInternalServerError}
 	ErrInternalServer = &CodeError{errCode: 10001, errMsg: "内部服务器错误", httpCode: http.StatusInternalServerError}
-	// 调用数据的错误
-	ErrDatabase = &CodeError{errCode: 10002, errMsg: "数据库错误", httpCode: http.StatusInternalServerError}
+	ErrDatabase       = &CodeError{errCode: 10002, errMsg: "数据库错误", httpCode: http.StatusInternalServerError}
 
 	// 模块通用错误
 	ErrBadRequest      = &CodeError{errCode: 20001, errMsg: "请求参数不合法", httpCode: http.StatusBadRequest}
 	ErrGenToken        = &CodeError{errCode: 20002, errMsg: "生成 token 失败", httpCode: http.StatusForbidden}
-	ErrTokenNotFound   = &CodeError{errCode: 20003, errMsg: "用户 token 不存在", httpCode: http.StatusUnauthorized}
-	ErrTokenExpire     = &CodeError{errCode: 20004, errMsg: "用户 token 过期", httpCode: http.StatusForbidden}
-	ErrTokenValidation = &CodeError{errCode: 20005, errMsg: "用户 token 无效", httpCode: http.StatusForbidden}
+	ErrTokenNotFound   = &CodeError{errCode: 20003, errMsg: "用户 token 不存在或已过期", httpCode: http.StatusUnauthorized}
+	ErrTokenValidation = &CodeError{errCode: 20004, errMsg: "用户 token 无效", httpCode: http.StatusForbidden}
 
 	// User模块错误
 	ErrUserNotFound       = &CodeError{errCode: 20101, errMsg: "用户不存在", httpCode: http.StatusBadRequest}

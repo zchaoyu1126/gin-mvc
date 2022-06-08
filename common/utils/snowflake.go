@@ -59,6 +59,7 @@ func (s *SnowFlake) tilNextMills() int64 {
 	}
 	return timeStampMill
 }
+
 func (s *SnowFlake) NextId() (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
